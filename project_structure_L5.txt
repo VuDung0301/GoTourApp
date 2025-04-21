@@ -1,0 +1,14 @@
+
+/Users/vuvandung/DA1/GoTour
+├── GoTourApp
+├── backend
+├── frontend-admin
+├── full_project_structure_ls.txt
+├── package-lock.json
+└── project_structure_L5.txt
+
+directory: 3 file: 3
+
+
+
+[2K[1G
