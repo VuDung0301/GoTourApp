@@ -10,6 +10,7 @@ import {
   Platform,
   ScrollView,
   Alert,
+  ActivityIndicator, // Thêm ActivityIndicator
 } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -22,7 +23,6 @@ export default function RegisterScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const { register } = useAuth();
-
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -33,42 +33,37 @@ export default function RegisterScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Hàm kiểm tra dữ liệu nhập vào
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-
     if (!name.trim()) {
       newErrors.name = 'Vui lòng nhập họ tên';
     }
-
     if (!email.trim()) {
       newErrors.email = 'Vui lòng nhập email';
     } else if (!/\S+@\S+\.\S+/.test(email.trim())) {
       newErrors.email = 'Email không hợp lệ';
     }
-
     if (phone.trim() && !/^[0-9]{10}$/.test(phone.trim())) {
       newErrors.phone = 'Số điện thoại không hợp lệ (cần 10 chữ số)';
     }
-
     if (!password.trim()) {
       newErrors.password = 'Vui lòng nhập mật khẩu';
     } else if (password.length < 6) {
       newErrors.password = 'Mật khẩu phải có ít nhất 6 ký tự';
     }
-
     if (!confirmPassword.trim()) {
       newErrors.confirmPassword = 'Vui lòng nhập lại mật khẩu';
     } else if (password !== confirmPassword) {
       newErrors.confirmPassword = 'Mật khẩu không khớp';
     }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
+  // Hàm xử lý đăng ký
   const handleRegister = async () => {
     if (!validateForm()) return;
-
     setIsLoading(true);
     try {
       const userData = {
@@ -77,16 +72,14 @@ export default function RegisterScreen() {
         password,
         phone: phone || undefined,
       };
-
       const result = await register(userData);
       if (result.success) {
-        Alert.alert('Đăng ký thành công', 'Tài khoản của bạn đã được tạo thành công!', [
+        Alert.alert('Đăng ký thành công', 'Tài khoản của bạn đã được tạo. Vui lòng đăng nhập.', [
           {
             text: 'OK',
             onPress: () => {
-              setTimeout(() => {
-                router.replace('/');
-              }, 100);
+              // *** THAY ĐỔI CHÍNH: Chuyển hướng về trang Login ***
+              router.replace('/(auth)/login');
             },
           },
         ]);
@@ -109,21 +102,21 @@ export default function RegisterScreen() {
           title: 'Đăng ký',
           headerShown: true,
           headerBackTitleVisible: false,
+          headerTintColor: colors.text, // Đảm bảo màu chữ header phù hợp
+          headerStyle: { backgroundColor: colors.background }, // Đảm bảo màu nền header phù hợp
         }}
       />
-
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <View style={styles.headerContainer}>
             <Text style={[styles.title, { color: colors.text }]}>Tạo tài khoản mới</Text>
             <Text style={[styles.subtitle, { color: colors.tabIconDefault }]}>
               Đăng ký để khám phá và đặt tour du lịch dễ dàng
             </Text>
           </View>
-
           <View style={styles.formContainer}>
             {/* Họ tên */}
             <View style={styles.inputContainer}>
@@ -323,18 +316,20 @@ export default function RegisterScreen() {
               ) : null}
             </View>
 
+            {/* Nút Đăng ký */}
             <TouchableOpacity
               style={[styles.registerButton, { backgroundColor: colors.tint, opacity: isLoading ? 0.7 : 1 }]}
               onPress={handleRegister}
               disabled={isLoading}
             >
               {isLoading ? (
-                <Text style={styles.registerButtonText}>Đang xử lý...</Text>
+                <ActivityIndicator color="#FFFFFF" /> // Hiển thị loading
               ) : (
                 <Text style={styles.registerButtonText}>Đăng ký</Text>
               )}
             </TouchableOpacity>
 
+            {/* Link Đăng nhập */}
             <View style={styles.loginContainer}>
               <Text style={[styles.loginText, { color: colors.tabIconDefault }]}>
                 Đã có tài khoản?
@@ -350,6 +345,7 @@ export default function RegisterScreen() {
   );
 }
 
+// --- Styles --- (Giữ nguyên styles từ file gốc)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -357,19 +353,23 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     padding: 20,
+    justifyContent: 'center', // Căn giữa nội dung khi ít
   },
   headerContainer: {
     marginBottom: 24,
     marginTop: 12,
+    alignItems: 'center', // Căn giữa tiêu đề
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 8,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
     lineHeight: 22,
+    textAlign: 'center',
   },
   formContainer: {
     marginBottom: 32,
@@ -404,6 +404,7 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 12,
     marginTop: 4,
+    color: 'red', // Đảm bảo màu lỗi rõ ràng
   },
   registerButton: {
     height: 50,
@@ -430,4 +431,4 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginLeft: 4,
   },
-}); 
+});

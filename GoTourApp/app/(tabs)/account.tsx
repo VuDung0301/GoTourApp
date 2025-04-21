@@ -26,7 +26,6 @@ export default function AccountScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const { user, token, logout, isAuthenticated } = useAuth();
-
   const [activeTab, setActiveTab] = useState<'profile' | 'bookings'>('profile');
   const [bookingType, setBookingType] = useState<'all' | 'tour' | 'flight' | 'hotel'>('all');
   const [flightBookings, setFlightBookings] = useState<any[]>([]);
@@ -43,44 +42,23 @@ export default function AccountScreen() {
 
   const fetchAllBookings = async () => {
     if (!token) return;
-
     setIsLoading(true);
     try {
-      // Thực hiện đồng thời cả ba request
       const [flightResponse, tourResponse, hotelResponse] = await Promise.all([
-        bookingsApi.getMyBookings(token),
-        tourBookingsApi.getMyBookings(token),
-        hotelBookingsApi.getMyBookings(token)
+        bookingsApi.getMyBookings(token).catch(e => ({ success: false, data: [], message: e.message })),
+        tourBookingsApi.getMyBookings(token).catch(e => ({ success: false, data: [], message: e.message })),
+        hotelBookingsApi.getMyBookings(token).catch(e => ({ success: false, data: [], message: e.message }))
       ]);
 
-      // Xử lý dữ liệu đặt vé máy bay
-      if (flightResponse.success && flightResponse.data) {
-        console.log('Flight bookings data:', flightResponse.data);
-        setFlightBookings(flightResponse.data);
-      } else {
-        console.error('Error fetching flight bookings:', flightResponse.message);
-        setFlightBookings([]);
-      }
+      setFlightBookings(flightResponse.success ? flightResponse.data : []);
+      setTourBookings(tourResponse.success ? tourResponse.data : []);
+      setHotelBookings(hotelResponse.success ? hotelResponse.data : []);
 
-      // Xử lý dữ liệu đặt tour
-      if (tourResponse.success && tourResponse.data) {
-        console.log('Tour bookings data:', tourResponse.data);
-        setTourBookings(tourResponse.data);
-      } else {
-        console.error('Error fetching tour bookings:', tourResponse.message);
-        setTourBookings([]);
-      }
-
-      // Xử lý dữ liệu đặt phòng khách sạn
-      if (hotelResponse.success && hotelResponse.data) {
-        console.log('Hotel bookings data:', hotelResponse.data);
-        setHotelBookings(hotelResponse.data);
-      } else {
-        console.error('Error fetching hotel bookings:', hotelResponse.message);
-        setHotelBookings([]);
-      }
     } catch (error) {
       console.error('Failed to fetch bookings:', error);
+      setFlightBookings([]);
+      setTourBookings([]);
+      setHotelBookings([]);
     } finally {
       setIsLoading(false);
       setRefreshing(false);
@@ -88,29 +66,25 @@ export default function AccountScreen() {
   };
 
   const handleRefresh = () => {
-    setRefreshing(true);
-    fetchAllBookings();
+    if (activeTab === 'bookings') {
+      setRefreshing(true);
+      fetchAllBookings();
+    }
+    // Không cần làm gì nếu đang ở tab profile
   };
+
 
   const handleCancelBooking = async (bookingId: string, type: 'tour' | 'flight' | 'hotel') => {
     if (!token) return;
-
     Alert.alert(
       'Xác nhận hủy',
-      `Bạn có chắc chắn muốn hủy ${
-        type === 'tour' ? 'tour' : 
+      `Bạn có chắc chắn muốn hủy ${type === 'tour' ? 'tour' :
         type === 'flight' ? 'vé máy bay' : 'đặt phòng khách sạn'
       } đã đặt này không?`,
       [
+        { text: 'Không', style: 'cancel' },
         {
-          text: 'Không',
-          style: 'cancel',
-        },
-        {
-          text: `Có, hủy ${
-            type === 'tour' ? 'tour' : 
-            type === 'flight' ? 'vé máy bay' : 'đặt phòng khách sạn'
-          }`,
+          text: `Có, hủy`,
           style: 'destructive',
           onPress: async () => {
             try {
@@ -122,25 +96,16 @@ export default function AccountScreen() {
               } else {
                 response = await hotelBookingsApi.cancelBooking(bookingId, token);
               }
-              
+
               if (response.success) {
-                Alert.alert('Thành công', `Hủy ${
-                  type === 'tour' ? 'tour' : 
-                  type === 'flight' ? 'vé máy bay' : 'đặt phòng khách sạn'
-                } thành công`);
+                Alert.alert('Thành công', `Hủy đặt chỗ thành công`);
                 fetchAllBookings(); // Tải lại danh sách
               } else {
-                Alert.alert('Lỗi', response.message || `Không thể hủy ${
-                  type === 'tour' ? 'tour' : 
-                  type === 'flight' ? 'vé máy bay' : 'đặt phòng khách sạn'
-                }`);
+                Alert.alert('Lỗi', response.message || `Không thể hủy đặt chỗ`);
               }
             } catch (error) {
               console.error('Error cancelling booking:', error);
-              Alert.alert('Lỗi', `Đã xảy ra lỗi khi hủy ${
-                type === 'tour' ? 'tour' : 
-                type === 'flight' ? 'vé máy bay' : 'đặt phòng khách sạn'
-              }`);
+              Alert.alert('Lỗi', `Đã xảy ra lỗi khi hủy đặt chỗ`);
             }
           },
         },
@@ -150,29 +115,27 @@ export default function AccountScreen() {
 
   const handleLogout = async () => {
     Alert.alert('Đăng xuất', 'Bạn có chắc chắn muốn đăng xuất?', [
-      {
-        text: 'Hủy',
-        style: 'cancel',
-      },
+      { text: 'Hủy', style: 'cancel' },
       {
         text: 'Đăng xuất',
+        style: 'destructive', // Thêm style destructive
         onPress: async () => {
           await logout();
-          // Nên sử dụng setTimeout
-          setTimeout(() => {
-            router.replace('/');
-          }, 100);
+          // Sử dụng replace để không thể quay lại màn hình Account sau khi logout
+          router.replace('/');
         },
       },
     ]);
   };
 
+  // *** GIAO DIỆN TAB HỒ SƠ ĐÃ THIẾT KẾ LẠI ***
   const renderProfileTab = () => {
     if (!isAuthenticated) {
       return (
         <View style={styles.notLoggedInContainer}>
+          <Ionicons name="person-circle-outline" size={80} color={colors.tabIconDefault} />
           <Text style={[styles.notLoggedInText, { color: colors.text }]}>
-            Bạn chưa đăng nhập
+            Đăng nhập để quản lý tài khoản
           </Text>
           <View style={styles.authButtonsContainer}>
             <TouchableOpacity
@@ -192,47 +155,82 @@ export default function AccountScreen() {
       );
     }
 
+    // Render khi đã đăng nhập
     return (
-      <ScrollView style={styles.tabContent}>
-        <View style={[styles.profileHeader, { backgroundColor: colors.cardBackground }]}>
-          <View style={styles.avatarContainer}>
-            <View style={[styles.avatar, { backgroundColor: colors.tint }]}>
-              <Text style={styles.avatarText}>
-                {user?.name?.charAt(0)?.toUpperCase() || 'U'}
-              </Text>
-            </View>
+      <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+        {/* Phần Header Profile */}
+        <View style={[styles.profileHeaderContainer, { backgroundColor: colors.tint + '15' }]}>
+          <View style={styles.profileAvatarContainer}>
+            {user?.avatar ? (
+              <Image source={{ uri: user.avatar }} style={styles.profileAvatar} />
+            ) : (
+              <View style={[styles.profileAvatarPlaceholder, { backgroundColor: colors.tint }]}>
+                <Text style={styles.profileAvatarText}>
+                  {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                </Text>
+              </View>
+            )}
           </View>
-          <Text style={[styles.userName, { color: colors.text }]}>{user?.name}</Text>
-          <Text style={[styles.userEmail, { color: colors.tabIconDefault }]}>{user?.email}</Text>
+          <Text style={[styles.profileName, { color: colors.text }]}>{user?.name}</Text>
+          <Text style={[styles.profileEmail, { color: colors.tabIconDefault }]}>{user?.email}</Text>
+          <TouchableOpacity style={styles.editProfileButton}>
+            <Text style={[styles.editProfileText, { color: colors.tint }]}>Chỉnh sửa hồ sơ</Text>
+          </TouchableOpacity>
         </View>
 
-        <View style={[styles.sectionContainer, { backgroundColor: colors.cardBackground }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Thông tin cá nhân</Text>
-          
-          <View style={styles.profileInfoItem}>
-            <Ionicons name="mail-outline" size={20} color={colors.tabIconDefault} />
-            <Text style={[styles.profileInfoText, { color: colors.text }]}>{user?.email}</Text>
-          </View>
-          
-          <View style={styles.profileInfoItem}>
-            <Ionicons name="call-outline" size={20} color={colors.tabIconDefault} />
-            <Text style={[styles.profileInfoText, { color: colors.text }]}>
-              {user?.phone || 'Chưa cập nhật'}
-            </Text>
-          </View>
+        {/* Phần Các Lựa Chọn */}
+        <View style={styles.optionsContainer}>
+          <TouchableOpacity style={[styles.optionItem, { borderBottomColor: colors.border }]}>
+            <Ionicons name="person-outline" size={22} color={colors.tabIconDefault} style={styles.optionIcon} />
+            <Text style={[styles.optionText, { color: colors.text }]}>Thông tin cá nhân</Text>
+            <Ionicons name="chevron-forward-outline" size={20} color={colors.tabIconDefault} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.optionItem, { borderBottomColor: colors.border }]}>
+            <Ionicons name="lock-closed-outline" size={22} color={colors.tabIconDefault} style={styles.optionIcon} />
+            <Text style={[styles.optionText, { color: colors.text }]}>Đổi mật khẩu</Text>
+            <Ionicons name="chevron-forward-outline" size={20} color={colors.tabIconDefault} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.optionItem, { borderBottomColor: colors.border }]}>
+            <Ionicons name="notifications-outline" size={22} color={colors.tabIconDefault} style={styles.optionIcon} />
+            <Text style={[styles.optionText, { color: colors.text }]}>Thông báo</Text>
+            <Ionicons name="chevron-forward-outline" size={20} color={colors.tabIconDefault} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.optionItem, { borderBottomColor: colors.border }]}>
+            <Ionicons name="shield-checkmark-outline" size={22} color={colors.tabIconDefault} style={styles.optionIcon} />
+            <Text style={[styles.optionText, { color: colors.text }]}>Bảo mật</Text>
+            <Ionicons name="chevron-forward-outline" size={20} color={colors.tabIconDefault} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.optionItem, { borderBottomColor: colors.border }]}>
+            <Ionicons name="language-outline" size={22} color={colors.tabIconDefault} style={styles.optionIcon} />
+            <Text style={[styles.optionText, { color: colors.text }]}>Ngôn ngữ</Text>
+            <Ionicons name="chevron-forward-outline" size={20} color={colors.tabIconDefault} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.optionItem, { borderBottomColor: colors.border }]}>
+            <Ionicons name="help-circle-outline" size={22} color={colors.tabIconDefault} style={styles.optionIcon} />
+            <Text style={[styles.optionText, { color: colors.text }]}>Trợ giúp & Hỗ trợ</Text>
+            <Ionicons name="chevron-forward-outline" size={20} color={colors.tabIconDefault} />
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity 
-          style={[styles.logoutButton, { backgroundColor: colors.error + '20' }]}
+        {/* Nút Đăng xuất */}
+        <TouchableOpacity
+          style={[styles.logoutButton, { backgroundColor: colors.error + '1A' }]} // Màu nền nhẹ hơn
           onPress={handleLogout}
         >
-          <Ionicons name="log-out-outline" size={20} color={colors.error} />
+          <Ionicons name="log-out-outline" size={22} color={colors.error} style={styles.optionIcon} />
           <Text style={[styles.logoutText, { color: colors.error }]}>Đăng xuất</Text>
         </TouchableOpacity>
       </ScrollView>
     );
   };
 
+
+  // --- Phần renderBookingTab và các hàm liên quan giữ nguyên ---
   const renderBookingTab = () => {
     if (!isAuthenticated) {
       return (
@@ -249,7 +247,6 @@ export default function AccountScreen() {
         </View>
       );
     }
-
     if (isLoading && !refreshing) {
       return (
         <View style={styles.loadingContainer}>
@@ -257,33 +254,33 @@ export default function AccountScreen() {
         </View>
       );
     }
-
     // Lọc booking theo loại đã chọn
     const filteredBookings = (() => {
-      if (bookingType === 'tour') return tourBookings;
-      if (bookingType === 'flight') return flightBookings;
-      if (bookingType === 'hotel') return hotelBookings;
-      // Kết hợp tất cả các loại booking khi chọn "Tất cả"
-      return [
-        ...tourBookings.map(booking => ({...booking, type: 'tour'})),
-        ...flightBookings.map(booking => ({...booking, type: 'flight'})),
-        ...hotelBookings.map(booking => ({...booking, type: 'hotel'}))
-      ];
+      const all = [
+        ...tourBookings.map(booking => ({ ...booking, type: 'tour' })),
+        ...flightBookings.map(booking => ({ ...booking, type: 'flight' })),
+        ...hotelBookings.map(booking => ({ ...booking, type: 'hotel' }))
+      ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()); // Sắp xếp mới nhất trước
+
+      if (bookingType === 'tour') return all.filter(b => b.type === 'tour');
+      if (bookingType === 'flight') return all.filter(b => b.type === 'flight');
+      if (bookingType === 'hotel') return all.filter(b => b.type === 'hotel');
+      return all;
     })();
 
-    if (filteredBookings.length === 0) {
+    if (filteredBookings.length === 0 && !isLoading) { // Thêm điều kiện !isLoading
       return (
         <ScrollView
           contentContainerStyle={styles.emptyContainer}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.tint} />
           }
         >
           <Ionicons name="calendar-outline" size={64} color={colors.tabIconDefault} />
           <Text style={[styles.emptyText, { color: colors.text }]}>
-            {bookingType === 'all' 
-              ? 'Bạn chưa đặt tour, vé máy bay hoặc khách sạn nào' 
-              : bookingType === 'tour' 
+            {bookingType === 'all'
+              ? 'Bạn chưa đặt tour, vé máy bay hoặc khách sạn nào'
+              : bookingType === 'tour'
                 ? 'Bạn chưa đặt tour nào'
                 : bookingType === 'flight'
                   ? 'Bạn chưa đặt vé máy bay nào'
@@ -294,8 +291,8 @@ export default function AccountScreen() {
             onPress={() => router.push('/')}
           >
             <Text style={styles.browseButtonText}>
-              {bookingType === 'flight' 
-                ? 'Tìm chuyến bay' 
+              {bookingType === 'flight'
+                ? 'Tìm chuyến bay'
                 : bookingType === 'hotel'
                   ? 'Tìm khách sạn'
                   : 'Khám phá tour'}
@@ -304,7 +301,6 @@ export default function AccountScreen() {
         </ScrollView>
       );
     }
-
     return (
       <>
         <View style={styles.bookingTypeFilter}>
@@ -327,7 +323,7 @@ export default function AccountScreen() {
               Tất cả
             </Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={[
               styles.typeFilterButton,
@@ -347,7 +343,7 @@ export default function AccountScreen() {
               Tour
             </Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={[
               styles.typeFilterButton,
@@ -367,7 +363,6 @@ export default function AccountScreen() {
               Vé máy bay
             </Text>
           </TouchableOpacity>
-
           <TouchableOpacity
             style={[
               styles.typeFilterButton,
@@ -388,66 +383,58 @@ export default function AccountScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-
         <FlatList
           data={filteredBookings}
           keyExtractor={(item) => `${item.type || 'unknown'}-${item._id}`}
-          renderItem={({ item }) => 
-            item.type === 'flight' 
-              ? renderFlightBookingItem(item) 
+          renderItem={({ item }) =>
+            item.type === 'flight'
+              ? renderFlightBookingItem(item)
               : item.type === 'hotel'
                 ? renderHotelBookingItem(item)
                 : renderTourBookingItem(item)
           }
           contentContainerStyle={styles.bookingsList}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.tint} />
           }
         />
       </>
     );
   };
-
   const getStatusColor = (status: string) => {
+    status = status?.toLowerCase() || 'pending'; // Mặc định là pending nếu không có status
     switch (status) {
-      case 'confirmed':
-        return '#4CAF50'; // green
-      case 'pending':
-        return '#FF9800'; // orange
-      case 'cancelled':
-        return '#F44336'; // red
-      default:
-        return colors.tabIconDefault;
+      case 'confirmed': return '#4CAF50'; // green
+      case 'pending': return '#FF9800'; // orange
+      case 'cancelled': return '#F44336'; // red
+      case 'completed': return '#2196F3'; // blue
+      default: return colors.tabIconDefault;
     }
   };
-
   const getStatusText = (status: string) => {
+    status = status?.toLowerCase() || 'pending';
     switch (status) {
-      case 'confirmed':
-        return 'Đã xác nhận';
-      case 'pending':
-        return 'Đang chờ';
-      case 'cancelled':
-        return 'Đã hủy';
-      default:
-        return 'Không xác định';
+      case 'confirmed': return 'Đã xác nhận';
+      case 'pending': return 'Đang chờ';
+      case 'cancelled': return 'Đã hủy';
+      case 'completed': return 'Hoàn thành';
+      default: return 'Không xác định';
     }
   };
-
   const renderTourBookingItem = (booking: any) => {
     const statusColor = getStatusColor(booking.status);
-    const startDate = booking.startDate ? new Date(booking.startDate) : new Date();
-    const isPastDate = startDate.getTime() < new Date().getTime();
-    const canCancel = booking.status !== 'cancelled' && !isPastDate;
-    
+    const startDate = booking.startDate ? new Date(booking.startDate) : null;
+    const isPastDate = startDate ? startDate.getTime() < new Date().getTime() : false;
+    const canCancel = booking.status !== 'cancelled' && booking.status !== 'completed' && !isPastDate;
+
     return (
       <View style={[styles.bookingItem, { backgroundColor: colors.cardBackground }]}>
         <View style={styles.bookingHeaderWithBadge}>
-          <View style={styles.bookingTypeIndicator}>
+          <View style={[styles.bookingTypeIndicator, { backgroundColor: CategoryColors.tour }]}>
             <Ionicons name="map-outline" size={16} color="white" />
             <Text style={styles.bookingTypeText}>Tour</Text>
           </View>
-          <Text style={[styles.tourName, { color: colors.text }]}>
+          <Text style={[styles.tourName, { color: colors.text }]} numberOfLines={1}>
             {booking.tour?.name || 'Tour không xác định'}
           </Text>
           <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
@@ -456,30 +443,30 @@ export default function AccountScreen() {
             </Text>
           </View>
         </View>
-        
+
         <View style={styles.bookingDetails}>
           <View style={styles.bookingDetailItem}>
             <Ionicons name="calendar-outline" size={16} color={colors.tabIconDefault} />
             <Text style={[styles.bookingDetailText, { color: colors.text }]}>
-              {booking.startDate ? format(new Date(booking.startDate), 'dd/MM/yyyy', { locale: vi }) : 'N/A'}
+              {startDate ? format(startDate, 'dd/MM/yyyy', { locale: vi }) : 'N/A'}
             </Text>
           </View>
-          
+
           <View style={styles.bookingDetailItem}>
             <Ionicons name="people-outline" size={16} color={colors.tabIconDefault} />
             <Text style={[styles.bookingDetailText, { color: colors.text }]}>
               {booking.participants || booking.numOfPeople || 1} người
             </Text>
           </View>
-          
+
           <View style={styles.bookingDetailItem}>
             <Ionicons name="cash-outline" size={16} color={colors.tabIconDefault} />
-            <Text style={[styles.bookingDetailText, { color: colors.text }]}>
+            <Text style={[styles.bookingDetailText, { color: colors.text, fontWeight: 'bold' }]}>
               {(booking.price || booking.totalPrice || 0).toLocaleString('vi-VN')}đ
             </Text>
           </View>
         </View>
-        
+
         <View style={styles.bookingFooter}>
           <TouchableOpacity
             style={[styles.viewDetailsButton, { borderColor: colors.tint }]}
@@ -489,7 +476,7 @@ export default function AccountScreen() {
               Chi tiết tour
             </Text>
           </TouchableOpacity>
-          
+
           {canCancel && (
             <TouchableOpacity
               style={[styles.cancelButton, { borderColor: colors.error }]}
@@ -504,25 +491,22 @@ export default function AccountScreen() {
       </View>
     );
   };
-
   const renderFlightBookingItem = (booking: any) => {
     const statusColor = getStatusColor(booking.status);
-    const departureTime = booking.flight?.departureTime 
-      ? new Date(booking.flight.departureTime)
-      : new Date();
-    const isPastDate = departureTime.getTime() < new Date().getTime();
-    const canCancel = booking.status !== 'cancelled' && !isPastDate;
-    
+    const departureTime = booking.flight?.departureTime ? new Date(booking.flight.departureTime) : null;
+    const isPastDate = departureTime ? departureTime.getTime() < new Date().getTime() : false;
+    const canCancel = booking.status !== 'cancelled' && booking.status !== 'completed' && !isPastDate;
+
     return (
       <View style={[styles.bookingItem, { backgroundColor: colors.cardBackground }]}>
         <View style={styles.bookingHeaderWithBadge}>
-          <View style={[styles.bookingTypeIndicator, { backgroundColor: '#1976D2' }]}>
+          <View style={[styles.bookingTypeIndicator, { backgroundColor: CategoryColors.flight }]}>
             <Ionicons name="airplane-outline" size={16} color="white" />
             <Text style={styles.bookingTypeText}>Vé máy bay</Text>
           </View>
-          <Text style={[styles.tourName, { color: colors.text }]}>
-            {booking.flight ? 
-              `${booking.flight.departureCity} - ${booking.flight.arrivalCity}` : 
+          <Text style={[styles.tourName, { color: colors.text }]} numberOfLines={1}>
+            {booking.flight ?
+              `${booking.flight.departureCity} - ${booking.flight.arrivalCity}` :
               'Chuyến bay không xác định'}
           </Text>
           <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
@@ -531,46 +515,42 @@ export default function AccountScreen() {
             </Text>
           </View>
         </View>
-        
+
         <View style={styles.bookingDetails}>
-          {booking.flight && (
+          {departureTime && (
             <View style={styles.bookingDetailItem}>
               <Ionicons name="time-outline" size={16} color={colors.tabIconDefault} />
               <Text style={[styles.bookingDetailText, { color: colors.text }]}>
-                {booking.flight.departureTime ? 
-                  format(new Date(booking.flight.departureTime), 'HH:mm - dd/MM/yyyy', { locale: vi }) : 
-                  'N/A'}
+                {format(departureTime, 'HH:mm - dd/MM/yyyy', { locale: vi })}
               </Text>
             </View>
           )}
-          
+
           <View style={styles.bookingDetailItem}>
             <Ionicons name="people-outline" size={16} color={colors.tabIconDefault} />
             <Text style={[styles.bookingDetailText, { color: colors.text }]}>
               {booking.passengers?.length || 1} hành khách
             </Text>
           </View>
-          
+
           <View style={styles.bookingDetailItem}>
             <Ionicons name="cash-outline" size={16} color={colors.tabIconDefault} />
-            <Text style={[styles.bookingDetailText, { color: colors.text }]}>
+            <Text style={[styles.bookingDetailText, { color: colors.text, fontWeight: 'bold' }]}>
               {(booking.totalPrice || 0).toLocaleString('vi-VN')}đ
             </Text>
           </View>
         </View>
-        
+
         <View style={styles.bookingFooter}>
-          {booking.flight && (
-            <TouchableOpacity
-              style={[styles.viewDetailsButton, { borderColor: colors.tint }]}
-              onPress={() => router.push(`/booking/confirmation?bookingId=${booking._id}&type=flight`)}
-            >
-              <Text style={[styles.viewDetailsText, { color: colors.tint }]}>
-                Chi tiết vé
-              </Text>
-            </TouchableOpacity>
-          )}
-          
+          <TouchableOpacity
+            style={[styles.viewDetailsButton, { borderColor: colors.tint }]}
+            onPress={() => router.push({ pathname: '/booking/confirmation', params: { bookingId: booking._id, type: 'flight' } })}
+          >
+            <Text style={[styles.viewDetailsText, { color: colors.tint }]}>
+              Chi tiết vé
+            </Text>
+          </TouchableOpacity>
+
           {canCancel && (
             <TouchableOpacity
               style={[styles.cancelButton, { borderColor: colors.error }]}
@@ -585,21 +565,21 @@ export default function AccountScreen() {
       </View>
     );
   };
-
   const renderHotelBookingItem = (booking: any) => {
     const statusColor = getStatusColor(booking.status);
-    const checkInDate = booking.checkIn ? new Date(booking.checkIn) : new Date();
-    const isPastDate = checkInDate.getTime() < new Date().getTime();
-    const canCancel = booking.status !== 'cancelled' && !isPastDate;
-    
+    const checkInDate = booking.checkIn ? new Date(booking.checkIn) : null;
+    const checkOutDate = booking.checkOut ? new Date(booking.checkOut) : null;
+    const isPastDate = checkOutDate ? checkOutDate.getTime() < new Date().getTime() : false;
+    const canCancel = booking.status !== 'cancelled' && booking.status !== 'completed' && !isPastDate;
+
     return (
       <View style={[styles.bookingItem, { backgroundColor: colors.cardBackground }]}>
         <View style={styles.bookingHeaderWithBadge}>
-          <View style={[styles.bookingTypeIndicator, { backgroundColor: '#4A90E2' }]}>
+          <View style={[styles.bookingTypeIndicator, { backgroundColor: CategoryColors.hotel }]}>
             <Ionicons name="bed-outline" size={16} color="white" />
             <Text style={styles.bookingTypeText}>Khách sạn</Text>
           </View>
-          <Text style={[styles.tourName, { color: colors.text }]}>
+          <Text style={[styles.tourName, { color: colors.text }]} numberOfLines={1}>
             {booking.hotel?.name || 'Khách sạn không xác định'}
           </Text>
           <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
@@ -608,17 +588,17 @@ export default function AccountScreen() {
             </Text>
           </View>
         </View>
-        
+
         <View style={styles.bookingDetails}>
-          <View style={styles.bookingDetailItem}>
-            <Ionicons name="calendar-outline" size={16} color={colors.tabIconDefault} />
-            <Text style={[styles.bookingDetailText, { color: colors.text }]}>
-              {booking.checkIn 
-                ? `${format(new Date(booking.checkIn), 'dd/MM/yyyy', { locale: vi })} - ${format(new Date(booking.checkOut), 'dd/MM/yyyy', { locale: vi })}`
-                : 'N/A'}
-            </Text>
-          </View>
-          
+          {checkInDate && checkOutDate && (
+            <View style={styles.bookingDetailItem}>
+              <Ionicons name="calendar-outline" size={16} color={colors.tabIconDefault} />
+              <Text style={[styles.bookingDetailText, { color: colors.text }]}>
+                {`${format(checkInDate, 'dd/MM/yyyy', { locale: vi })} - ${format(checkOutDate, 'dd/MM/yyyy', { locale: vi })}`}
+              </Text>
+            </View>
+          )}
+
           <View style={styles.bookingDetailItem}>
             <Ionicons name="people-outline" size={16} color={colors.tabIconDefault} />
             <Text style={[styles.bookingDetailText, { color: colors.text }]}>
@@ -626,15 +606,15 @@ export default function AccountScreen() {
               {booking.guests?.children ? `, ${booking.guests.children} trẻ em` : ''}
             </Text>
           </View>
-          
+
           <View style={styles.bookingDetailItem}>
             <Ionicons name="cash-outline" size={16} color={colors.tabIconDefault} />
-            <Text style={[styles.bookingDetailText, { color: colors.text }]}>
+            <Text style={[styles.bookingDetailText, { color: colors.text, fontWeight: 'bold' }]}>
               {(booking.totalPrice || 0).toLocaleString('vi-VN')}đ
             </Text>
           </View>
         </View>
-        
+
         <View style={styles.bookingFooter}>
           <TouchableOpacity
             style={[styles.viewDetailsButton, { borderColor: colors.tint }]}
@@ -644,7 +624,7 @@ export default function AccountScreen() {
               Chi tiết khách sạn
             </Text>
           </TouchableOpacity>
-          
+
           {canCancel && (
             <TouchableOpacity
               style={[styles.cancelButton, { borderColor: colors.error }]}
@@ -660,6 +640,8 @@ export default function AccountScreen() {
     );
   };
 
+
+  // --- Render chính của màn hình Account ---
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
@@ -667,10 +649,13 @@ export default function AccountScreen() {
         options={{
           title: 'Tài khoản',
           headerShown: true,
+          headerStyle: { backgroundColor: colors.background },
+          headerTitleStyle: { color: colors.text },
+          headerShadowVisible: false, // Bỏ shadow header
         }}
       />
-
-      <View style={styles.tabBar}>
+      {/* Thanh Tab chọn Profile / Bookings */}
+      <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
         <TouchableOpacity
           style={[
             styles.tabButton,
@@ -690,7 +675,7 @@ export default function AccountScreen() {
             Hồ sơ
           </Text>
         </TouchableOpacity>
-        
+
         <TouchableOpacity
           style={[
             styles.tabButton,
@@ -707,16 +692,18 @@ export default function AccountScreen() {
               { color: activeTab === 'bookings' ? colors.tint : colors.tabIconDefault },
             ]}
           >
-            Đặt tour
+            Đặt chỗ
           </Text>
         </TouchableOpacity>
       </View>
 
+      {/* Hiển thị nội dung tương ứng với tab đang chọn */}
       {activeTab === 'profile' ? renderProfileTab() : renderBookingTab()}
     </SafeAreaView>
   );
 }
 
+// --- Styles --- (Bao gồm cả styles mới cho Profile)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -724,7 +711,7 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
+    // backgroundColor: 'white', // Thêm màu nền nếu cần
   },
   tabButton: {
     flex: 1,
@@ -760,7 +747,8 @@ const styles = StyleSheet.create({
   authButtonsContainer: {
     flexDirection: 'row',
     width: '100%',
-    justifyContent: 'space-around',
+    justifyContent: 'space-around', // Hoặc 'center' nếu muốn gần nhau hơn
+    marginTop: 10,
   },
   authButton: {
     paddingVertical: 12,
@@ -768,92 +756,115 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     minWidth: 120,
     alignItems: 'center',
+    marginHorizontal: 10, // Thêm khoảng cách giữa 2 nút
   },
   authButtonText: {
     color: 'white',
     fontWeight: 'bold',
     fontSize: 16,
   },
-  profileHeader: {
-    padding: 20,
+  // Styles for Profile Tab (New)
+  profileHeaderContainer: {
     alignItems: 'center',
-    marginBottom: 20,
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginTop: 16,
+    paddingVertical: 30,
+    paddingHorizontal: 20,
+    marginBottom: 10,
   },
-  avatarContainer: {
-    marginBottom: 16,
+  profileAvatarContainer: {
+    marginBottom: 15,
+    position: 'relative', // Để đặt nút edit
   },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+  profileAvatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+  },
+  profileAvatarPlaceholder: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  avatarText: {
-    fontSize: 32,
+  profileAvatarText: {
+    fontSize: 40,
     fontWeight: 'bold',
     color: 'white',
   },
-  userName: {
-    fontSize: 24,
+  profileName: {
+    fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 4,
+    marginTop: 8,
   },
-  userEmail: {
+  profileEmail: {
     fontSize: 16,
+    marginTop: 4,
   },
-  sectionContainer: {
-    padding: 16,
-    marginBottom: 20,
-    borderRadius: 12,
+  editProfileButton: {
+    marginTop: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#0366d6', // Màu tint
+  },
+  editProfileText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  optionsContainer: {
+    marginTop: 10, // Giảm khoảng cách trên
     marginHorizontal: 16,
+    borderRadius: 12,
+    // backgroundColor: 'white', // Thêm màu nền nếu cần
+    overflow: 'hidden', // Đảm bảo border được bo tròn
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 16,
-  },
-  profileInfoItem: {
+  optionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    paddingVertical: 18, // Tăng padding dọc
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
   },
-  profileInfoText: {
+  optionIcon: {
+    marginRight: 16,
+  },
+  optionText: {
+    flex: 1,
     fontSize: 16,
-    marginLeft: 12,
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    borderRadius: 12,
     marginHorizontal: 16,
-    marginBottom: 20,
+    marginTop: 20, // Tăng khoảng cách trên
+    marginBottom: 30, // Tăng khoảng cách dưới
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    borderRadius: 12,
   },
   logoutText: {
+    flex: 1,
     fontSize: 16,
     fontWeight: '500',
-    marginLeft: 8,
   },
+  // Styles for Booking Tab (Existing - Keep as is)
   bookingTypeFilter: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
+    // borderBottomColor: '#E5E5E5', // Sử dụng màu từ theme
   },
   typeFilterButton: {
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
     marginRight: 12,
+    // backgroundColor: '#f0f0f0', // Sử dụng màu từ theme
   },
   activeTypeFilterButton: {
-    borderRadius: 20,
+    // backgroundColor: colors.tint + '20', // Sử dụng màu từ theme
   },
   typeFilterText: {
     fontSize: 14,
@@ -867,11 +878,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    marginTop: 50, // Thêm khoảng cách trên
   },
   emptyText: {
     fontSize: 16,
     marginTop: 12,
     marginBottom: 24,
+    textAlign: 'center',
   },
   browseButton: {
     paddingVertical: 12,
@@ -887,6 +900,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   bookingHeaderWithBadge: {
     flexDirection: 'row',
@@ -897,7 +915,6 @@ const styles = StyleSheet.create({
   bookingTypeIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#4CAF50',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
@@ -909,13 +926,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginLeft: 4,
   },
-  bookingHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  tourName: {
+  tourName: { // Đổi tên từ tourName để dùng chung
     fontSize: 16,
     fontWeight: 'bold',
     flex: 1,
@@ -924,7 +935,7 @@ const styles = StyleSheet.create({
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 4,
+    borderRadius: 12, // Bo tròn hơn
   },
   statusText: {
     fontSize: 12,
@@ -932,6 +943,7 @@ const styles = StyleSheet.create({
   },
   bookingDetails: {
     marginBottom: 16,
+    paddingLeft: 4, // Thêm padding để thẳng hàng với icon
   },
   bookingDetailItem: {
     flexDirection: 'row',
@@ -945,6 +957,10 @@ const styles = StyleSheet.create({
   bookingFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    borderTopWidth: 1,
+    // borderTopColor: '#f0f0f0', // Sử dụng màu từ theme
+    paddingTop: 12,
+    marginTop: 4,
   },
   viewDetailsButton: {
     borderWidth: 1,
@@ -974,4 +990,4 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     fontSize: 14,
   },
-}); 
+});
